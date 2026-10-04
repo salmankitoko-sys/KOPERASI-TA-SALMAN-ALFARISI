@@ -1,0 +1,1330 @@
+' =============================================================================
+' ACTIVITY DIAGRAM - SISTEM KOPERASI SYARIAH
+' =============================================================================
+' Format: PlantUML Activity Diagram (v2)
+' Buka di: https://www.plantuml.com/plantuml/ atau VS Code PlantUML extension
+' =============================================================================
+
+' ===== OVERVIEW: SEMUA ROLE =====
+@startuml overview-all-roles
+title Activity Diagram - Sistem Koperasi Syariah (Overview)
+|#LightBlue|Publik|
+|#LightGreen|Anggota|
+|#LightYellow|Pengurus|
+|#LightCoral|DPS|
+|#Lavender|Admin|
+|#LightGray|Payment Gateway|
+
+|Publik|
+start
+:Browse Marketplace;
+:Klik Detail Produk;
+if (Login / Register?) then (Belum login)
+  :Login / Register;
+  if (Login berhasil?) then (Ya)
+  else (Tidak)
+    :Tampilkan error;
+    stop
+  endif
+endif
+
+|#LightGreen|Anggota|
+if (Menu Dipilih) then (Simpanan)
+  :Isi nominal + jenis simpanan;
+  :Upload bukti transfer;
+  :Submit setoran;
+  :Status: Menunggu Verifikasi;
+elseif (Pembiayaan) then
+  :Pilih jenis akad;
+  :Isi form + upload dokumen;
+  :Submit pengajuan;
+  :Status: Diajukan;
+elseif (Pencairan) then
+  :Pilih pembiayaan disetujui;
+  :Isi rekening tujuan;
+  :Submit pencairan;
+  :Status: Menunggu;
+elseif (Bayar Angsuran) then
+  :Pilih tagihan angsuran;
+  :Upload bukti transfer;
+  :Submit pembayaran;
+  :Status: Menunggu Verifikasi;
+elseif (Beli di Marketplace) then
+  :Tambah ke keranjang;
+  :Checkout;
+  :Pilih metode pembayaran;
+  :Buat pesanan;
+endif
+
+|#LightCoral|DPS|
+if (Aksi DPS) then (Validasi Akad)
+  :Buka detail pembiayaan;
+  :Review struktur akad;
+  :Isi checklist validasi;
+  if (Hasil?) then (Sesuai Syariah)
+    :Status validasi: sesuai;
+  elseif (Perlu Perbaikan) then
+    :Status validasi: perlu_perbaikan;
+  else (Tidak Sesuai)
+    :Status validasi: tidak_sesuai;
+  endif
+elseif (Catat Temuan) then
+  :Isi data temuan audit;
+  :Submit temuan;
+elseif (Buat Opini) then
+  :Isi opini syariah;
+  :Submit opini;
+elseif (Review Produk) then
+  :Review produk marketplace;
+  :Submit hasil review;
+endif
+
+|#LightYellow|Pengurus|
+if (Aksi Pengurus) then (Review Pembiayaan)
+  :Lihat detail pembiayaan;
+  if (DPS sudah validasi sesuai?) then (Ya)
+    if (Hash masih cocok?) then (Ya)
+      :Approve pembiayaan;
+      :Generate jadwal angsuran;
+      :Status: Disetujui;
+    else (Tidak)
+      :Minta DPS validasi ulang;
+    endif
+  else (Belum / Tidak sesuai)
+    :Tolak pembiayaan;
+    :Status: Ditolak;
+  endif
+elseif (Verifikasi Transaksi) then
+  :Buka Mutasi Kas;
+  :Cek bukti transfer;
+  if (Bukti valid?) then (Ya)
+    :Approve mutasi;
+    :Update status transaksi;
+  else (Tidak)
+    :Tolak mutasi;
+  endif
+elseif (Proses Pencairan) then
+  :Review permintaan pencairan;
+  if (Metode?) then (Manual)
+    :Catat bukti transfer;
+  else (API)
+    :Kirim disbursement;
+  endif
+elseif (Moderasi Toko) then
+  :Review toko anggota;
+  if (Toko layak?) then (Ya)
+    :Approve toko;
+  else (Tidak)
+    :Reject toko;
+  endif
+endif
+
+|#Lavender|Admin|
+:Dashboard Admin;
+:Kelola users;
+:Monitor notifikasi;
+
+|#LightGray|Payment Gateway|
+if (Callback diterima) then (Pembayaran)
+  :Verifikasi payment code;
+  if (Status?) then (Berhasil)
+    :Update payment: PAID;
+    :Proses bisnis terkait;
+  else (Gagal/Expired)
+    :Update payment status;
+  endif
+else (Disbursement)
+  :Proses pencairan;
+  :Kirim callback hasil;
+endif
+
+stop
+@enduml
+
+
+' ===== 1. LOGIN & AUTENTIKASI =====
+@startuml activity-login
+title Activity Diagram - Login & Autentikasi
+
+start
+:User mengakses halaman login;
+
+if (Sudah login?) then (Ya)
+  :Redirect ke dashboard;
+  stop
+endif
+
+:Input email & password;
+
+if (Akun ada?) then (Ya)
+  :Verifikasi password;
+  if (Password benar?) then (Ya)
+    :Create session + token;
+    if (Email terverifikasi?) then (Ya)
+      :Cek role pengguna;
+      if (Role?) then (admin)
+        :Redirect ke /admin/dashboard;
+      elseif (pengurus) then
+        :Redirect ke /pengurus/dashboard;
+      elseif (anggota) then
+        :Redirect ke /anggota/dashboard;
+      elseif (dps) then
+        :Redirect ke /dps/dashboard;
+      elseif (pelanggan) then
+        :Redirect ke /pelanggan/dashboard;
+      endif
+      stop
+    else (Belum)
+      :Tampilkan pesan verifikasi email;
+      stop
+    endif
+  else (Salah)
+    :Tampilkan error "Password salah";
+    stop
+  endif
+else (Tidak)
+  if (Ingin register?) then (Ya)
+    :Buka form register;
+    :Pilih role (anggota/pelanggan);
+    :Isi data registrasi;
+    :Submit registrasi;
+    :Kirim email verifikasi;
+    :Tunggu verifikasi email;
+    stop
+  else (Tidak)
+    :Kembali ke login;
+    stop
+  endif
+endif
+@enduml
+
+
+' ===== 2. LIFECYCLE PEMBIAYAAN (End-to-End) =====
+@startuml activity-pembiayaan
+title Activity Diagram - Lifecycle Pembiayaan (End-to-End)
+
+|#LightGreen|Anggota|
+start
+:Masuk menu Pembiayaan;
+:Pilih jenis akad\n(Murabahah/Mudharabah/Musyarakah/Ijarah/Qardh);
+
+switch (Jenis Akad?)
+case (Murabahah)
+  :Input harga beli, margin%, DP, objek;
+  :Hitung harga jual & angsuran;
+case (Mudharabah)
+  :Input modal, nisbah%, estimasi omzet/biaya;
+  :Hitung bagi hasil;
+case (Musyarakah)
+  :Input modal koperasi+anggota, nisbah%;
+  :Hitung porsi modal & bagi hasil;
+case (Ijarah)
+  :Input nilai aset, ujrah/bulan, biaya perawatan;
+  :Hitung total pembayaran;
+case (Qardh)
+  :Input pokok pembiayaan, tenor;
+  :Hitung angsuran per bulan;
+endswitch
+
+:Upload formulir pengajuan (PDF/DOCX);
+:Submit pengajuan;
+
+if (Validasi form berhasil?) then (Ya)
+  :Simpan pembiayaan (status: diajukan);
+  :Simpan detail akad;
+  :Simpan dokumen pengajuan;
+  if (Murabahah/Qardh?) then (Ya)
+    :Buat jadwal angsuran otomatis;
+  endif
+  :Kirim notifikasi ke DPS, Pengurus, Admin;
+else (Tidak)
+  :Tampilkan error validasi;
+  :Kembali ke form;
+  stop
+endif
+
+|#LightCoral|DPS|
+:Lihat daftar pengajuan pembiayaan;
+:Klik detail pembiayaan;
+:Review struktur akad & dokumen;
+
+:DPS mengisi checklist validasi akad;
+:Input kesimpulan & catatan;
+:Submit validasi;
+
+if (Hasil validasi?) then (Sesuai Syariah)
+  :Status validasi_dps: sesuai;
+  :Simpan snapshot data + hash;
+  :Notify Pengurus & Anggota;
+elseif (Perlu Perbaikan) then
+  :Status validasi_dps: perlu_perbaikan;
+  :Catat catatan perbaikan;
+  :Notify Anggota untuk perbaiki;
+  :-- BALIK KE ANGGOTA --;
+  stop
+else (Tidak Sesuai)
+  :Status validasi_dps: tidak_sesuai;
+  :Notify Anggota: pengajuan ditolak;
+  stop
+endif
+
+|#LightYellow|Pengurus|
+:Lihat daftar pembiayaan menunggu review;
+:Klik detail pembiayaan;
+:Cek status validasi DPS;
+
+if (DPS sudah validasi sesuai + hash cocok?) then (Ya)
+  if (Pengurus menyetujui?) then (Setuju)
+    :Update status pembiayaan: disetujui;
+    :Set tanggal_persetujuan;
+    if (Jadwal angsuran belum ada?) then (Ya)
+      :Generate jadwal angsuran;
+    endif
+    :Notify Anggota: pembiayaan disetujui;
+  else (Tolak)
+    :Update status pembiayaan: ditolak;
+    :Input alasan penolakan;
+    :Notify Anggota: pembiayaan ditolak;
+    stop
+  endif
+else (Belum validasi / hash berubah)
+  if (Hash berubah?) then (Ya)
+    :Tolak: "DPS harus validasi ulang";
+  else (Belum validasi)
+    :Tolak: "Belum divalidasi DPS";
+  endif
+  stop
+endif
+
+|#LightGreen|Anggota|
+:Ajukan pencairan dana;
+:Input rekening tujuan + nominal;
+:Submit pencairan;
+
+|#LightYellow|Pengurus|
+:Review permintaan pencairan;
+:Approve pencairan;
+
+if (Metode pencairan?) then (Manual)
+  :Catat bukti transfer;
+  :Buat entri mutasi kas;
+elseif (API Gateway) then
+  :Kirim ke Payment Gateway;
+  :Menunggu callback;
+endif
+
+:Verifikasi mutasi kas;
+if (Mutasi valid?) then (Ya)
+  :Update pencairan: selesai;
+  if (Plafon cair penuh?) then (Ya)
+    :Update pembiayaan: berjalan;
+    :Notify Anggota: siap bayar angsuran;
+  else (Belum)
+    :-- Anggota bisa ajukan lagi --;
+  endif
+else (Tidak)
+  :Tolak mutasi;
+  :Notify Anggota;
+endif
+
+|#LightGreen|Anggota|
+repeat
+  :Bayar angsuran bulanan;
+  :Upload bukti transfer;
+  :Submit pembayaran;
+  :Status: menunggu_verifikasi;
+
+  |#LightYellow|Pengurus|
+  :Verifikasi pembayaran angsuran;
+  if (Bukti valid?) then (Ya)
+    :Approve mutasi;
+    :Update angsuran: dibayar;
+    :Update transaksi pembayaran;
+  else (Tidak)
+    :Tolak pembayaran;
+  endif
+  :Notify Anggota;
+
+  |#LightGreen|Anggota|
+  if (Semua angsuran lunas?) then (Ya)
+  else (Belum)
+  endif
+repeat while (Masih ada angsuran) is (Belum lunas)
+-> Lunas;
+
+:update pembiayaan: lunas;
+:Notify Anggota: pembiayaan lunas;
+
+stop
+@enduml
+
+
+' ===== 3. SETOR SIMPANAN =====
+@startuml activity-simpanan
+title Activity Diagram - Setor Simpanan
+
+|#LightGreen|Anggota|
+start
+:Masuk menu Simpanan;
+:Pilih jenis simpanan\n(pokok/wajib/sukarela/mudharabah);
+:Input nominal setoran;
+:Input tanggal setor;
+:Upload bukti transfer;
+
+if (Metode pembayaran?) then (Transfer Manual)
+  :Pilih rekening koperasi tujuan;
+  :Submit setoran;
+  :Buat SetoranSimpanan (status: menunggu_verifikasi);
+  :Buat TransaksiPembayaran (referensi: setoran_simpanan);
+elseif (QRIS) then
+  :Submit pembayaran QRIS;
+  :Buat SetoranSimpanan (status: menunggu_verifikasi);
+  :Buat Payment (status: pending);
+  :Tampilkan QR code untuk scan;
+  
+  |#LightGray|Payment Gateway|
+  :Menunggu scan & pembayaran;
+  
+  if (Pembayaran berhasil?) then (Ya)
+    :Callback: status PAID;
+    :Update Payment: PAID;
+    :Update SetoranSimpanan;
+  else (Gagal/Expired)
+    :Callback: status FAILED;
+    :Update Payment: gagal;
+    stop
+  endif
+endif
+
+|#LightYellow|Pengurus|
+:Masuk menu Mutasi Kas;
+:Lihat daftar transaksi menunggu_verifikasi;
+:Klik setoran simpanan;
+:Cek bukti transfer;
+
+if (Bukti transfer valid?) then (Ya)
+  :Approve mutasi;
+  :Update TransaksiPembayaran: diverifikasi;
+  :Update SetoranSimpanan: diterima;
+  :Tambah saldo simpanan anggota;
+  :Kirim notifikasi berhasil;
+else (Tidak)
+  :Tolak mutasi;
+  :Update status: ditolak;
+  :Kirim notifikasi penolakan;
+endif
+
+|#LightGreen|Anggota|
+:Lihat riwayat simpanan;
+:Status simpanan terupdate;
+
+stop
+@enduml
+
+
+' ===== 4. BAYAR ANGSURAN =====
+@startuml activity-angsuran
+title Activity Diagram - Bayar Angsuran
+
+|#LightGreen|Anggota|
+start
+:Masuk menu Angsuran;
+:Lihat jadwal angsuran;
+:Pilih tagihan angsuran;
+
+if (Metode pembayaran?) then (Transfer Manual)
+  :Pilih pembiayaan berjalan;
+  :Pilih angsuran belum_bayar;
+  :Pilih rekening koperasi tujuan;
+  :Input tanggal bayar;
+  :Upload bukti transfer;
+  :Submit pembayaran;
+  
+  :Buat PembayaranAngsuran (status: menunggu_verifikasi);
+  :Buat TransaksiPembayaran (referensi: pembayaran_angsuran);
+
+elseif (QRIS) then
+  :Pilih angsuran;
+  :Request QRIS payment;
+  
+  |#LightGray|Payment Gateway|
+  :Generate QR code;
+  
+  |#LightGreen|Anggota|
+  :Scan QR & bayar;
+  
+  |#LightGray|Payment Gateway|
+  if (Pembayaran berhasil?) then (Ya)
+    :Callback: status PAID;
+  else (Gagal/Expired)
+    :Callback: status gagal;
+    :Update Payment: gagal;
+    stop
+  endif
+endif
+
+|#LightYellow|Pengurus|
+:Masuk menu Mutasi Kas;
+:Lihat transaksi menunggu_verifikasi;
+:Pilih pembayaran angsuran;
+:Cek bukti transfer;
+
+if (Bukti valid?) then (Ya)
+  :Approve mutasi;
+  :Update PembayaranAngsuran: diverifikasi;
+  :Update Angsuran: dibayar;
+  :Set tanggal_bayar;
+  :Update TransaksiPembayaran: diverifikasi;
+else (Tidak)
+  :Tolak mutasi;
+  :Notify Anggota: pembayaran ditolak;
+endif
+
+|#LightGreen|Anggota|
+:Lihat status angsuran terupdate;
+if (Semua angsuran lunas?) then (Ya)
+  :Pembiayaan status: lunas;
+  :Notifikasi: pembiayaan lunas;
+else (Belum)
+  :Cek angsuran berikutnya;
+endif
+
+stop
+@enduml
+
+
+' ===== 5. PENCAIRAN DANA =====
+@startuml activity-pencairan
+title Activity Diagram - Pencairan Dana Pembiayaan
+
+|#LightGreen|Anggota|
+start
+:Masuk menu Transaksi;
+:Klik Pencairan;
+:Pilih pembiayaan dengan status disetujui;
+:Cek sisa plafon;
+
+if (Sisa plafon > 0?) then (Ya)
+  :Input nominal pencairan;
+  :Input bank tujuan;
+  :Input nomor rekening tujuan;
+  :Input nama pemilik rekening;
+  :Input tanggal pencairan;
+  :Input catatan (opsional);
+  :Submit pencairan;
+  :Buat PencairanDana (status: menunggu);
+  :Notify Pengurus: permintaan pencairan baru;
+else (Tidak)
+  :Tampilkan "Plafon sudah habis";
+  stop
+endif
+
+|#LightYellow|Pengurus|
+:Masuk menu Transaksi;
+:Lihat daftar pencairan menunggu;
+:Review rekening tujuan & nominal;
+:Cek sisa plafon pembiayaan;
+
+if (Pencairan disetujui?) then (Ya)
+  :Approve pencairan;
+  :Update PencairanDana: diproses;
+
+  if (Metode pencairan?) then (Transfer Manual)
+    :Pilih rekening koperasi sumber;
+    :Input nomor referensi transfer;
+    :Upload bukti transfer;
+    :Submit bukti;
+    :Buat entri MutasiKas;
+    
+    :Verifikasi MutasiKas;
+    if (Mutasi valid?) then (Ya)
+      :Update PencairanDana: selesai;
+      :Notify Anggota: dana ditransfer;
+    else (Tidak)
+      :Tolak mutasi;
+      :Notify Anggota: pencairan ditolak;
+    endif
+
+  elseif (API Disbursement) then
+    :Kirim ke Payment Gateway;
+    :Simpan disbursement_reference;
+    
+    |#LightGray|Payment Gateway|
+    :Proses disbursement;
+    if (Berhasil?) then (Ya)
+      :Callback: status sukses;
+    else (Gagal)
+      :Callback: status gagal;
+    endif
+
+    |#LightYellow|Pengurus|
+    if (Callback sukses?) then (Ya)
+      :Update PencairanDana: selesai;
+    else (Gagal)
+      :Update PencairanDana: gagal;
+      :Catat alasan kegagalan;
+    endif
+    :Notify Anggota hasil pencairan;
+
+  endif
+
+  :Cek total pencairan vs plafon;
+  if (Plafon cair penuh?) then (Ya)
+    :Update pembiayaan: berjalan;
+    :Generate jadwal angsuran jika belum ada;
+  endif
+
+else (Tolak)
+  :Update PencairanDana: ditolak;
+  :Input alasan penolakan;
+  :Notify Anggota: pencairan ditolak;
+endif
+
+stop
+@enduml
+
+
+' ===== 6. MARKETPLACE CHECKOUT =====
+@startuml activity-marketplace
+title Activity Diagram - Marketplace Checkout
+
+|#Gray|Publik/Pelanggan|
+start
+:Browse halaman marketplace;
+:Lihat daftar produk;
+:Filter by kategori (opsional);
+:Klik detail produk;
+if (Produk aktif?) then (Ya)
+  :Lihat detail produk + harga + stok;
+else (Tidak)
+  :Produk tidak ditemukan (404);
+  stop
+endif
+
+if (Ingin beli?) then (Ya)
+  :Klik "Tambah ke Keranjang";
+  :Input jumlah (qty);
+  :Update session cart;
+else (Tidak)
+  :Lihat produk lain;
+  stop
+endif
+
+|#LightGreen|Anggota|
+:Buka Keranjang;
+:Review item di keranjang;
+:Update jumlah atau hapus item;
+:Klik Checkout;
+
+if (Keranjang kosong?) then (Ya)
+  :Redirect ke keranjang;
+  stop
+endif
+
+:Review ringkasan belanja;
+:Input alamat kirim;
+:Pilih metode pengiriman;
+  - ambil_di_toko (gratis)
+  - diantar_penjual (Rp 5.000)
+  - kurir_lokal (Rp 10.000)
+
+:Pilih metode pembayaran;
+  - transfer_manual
+  - bayar_di_tempat
+  - qris
+
+:Input catatan pembeli (opsional);
+
+if (Metode pembayaran?) then (Transfer Manual)
+  :Buat Pesanan (status: menunggu, status_pembayaran: menunggu_verifikasi);
+elseif (Bayar di Tempat) then
+  :Buat Pesanan (status: menunggu, status_pembayaran: menunggu);
+elseif (QRIS) then
+  :Buat Pesanan (status: menunggu, status_pembayaran: menunggu);
+endif
+
+:Group item per toko;
+:Kurangi stok produk;
+if (Stok habis?) then (Ya)
+  :Update produk status: habis;
+endif
+
+:Notify Penjual (toko owner) & Pengurus;
+:Hapus keranjang session;
+
+if (Metode = QRIS?) then (Ya)
+  :Create QRIS Payment;
+  
+  |#LightGray|Payment Gateway|
+  :Generate QR code;
+  
+  |#LightGreen|Anggota|
+  :Tampilkan QR code;
+  :Scan & bayar;
+  
+  |#LightGray|Payment Gateway|
+  if (Pembayaran berhasil?) then (Ya)
+    :Callback: status PAID;
+    :Update Payment: PAID;
+  else (Gagal/Expired)
+    :Update Payment: gagal/expired;
+    :Notify: pembayaran gagal;
+    stop
+  endif
+endif
+
+|#LightGreen|Penjual|
+:Login ke dashboard;
+:Lihat pesanan baru di Lapak;
+:Proses pesanan;
+if (Metode pembayaran = transfer_manual?) then (Ya)
+  :Menunggu verifikasi bukti transfer;
+  :Verifikasi bukti transfer;
+endif
+:Update status pesanan;
+:Siapkan barang;
+:Update status: dikirim;
+
+|#LightGreen|Pembeli|
+:Lihat status pesanan;
+if (Barang sampai?) then (Ya)
+  :Klik "Terima Pesanan";
+  :Update pesanan: selesai;
+  :Beri rating/ulasan (opsional);
+else (Belum)
+  :Menunggu pengiriman;
+endif
+
+stop
+@enduml
+
+
+' ===== 7. DPS VALIDASI AKAD =====
+@startuml activity-dps-validasi
+title Activity Diagram - DPS Validasi Akad Syariah
+
+|#LightCoral|DPS|
+start
+:Login ke Dashboard DPS;
+:Masuk menu Audit Akad;
+:Lihat daftar pembiayaan;
+
+:Filter pembiayaan;
+  - by status
+  - by jenis akad
+  - by validasi_dps
+  - by pencarian
+
+:Klik detail pembiayaan;
+:Lihat struktur akad (detail_akad);
+:Lihat dokumen pengajuan;
+:Lihat data anggota & toko;
+
+if (Data akad lengkap?) then (Ya)
+else (Tidak)
+  :Catat temuan: data tidak lengkap;
+  :Submit temuan dengan risiko;
+endif
+
+:Mulai pengisian checklist validasi;
+
+split
+  :Kriteria 1: Kepatuhan syariah akad;
+  :Pilih: Ya / Tidak / Catatan;
+split again
+  :Kriteria 2: Kelengkapan dokumen;
+  :Pilih: Ya / Tidak / Catatan;
+split again
+  :Kriteria 3: Kewajaran margin/nisbah;
+  :Pilih: Ya / Tidak / Catatan;
+split again
+  :Kriteria Lainnya...;
+  :Pilih: Ya / Tidak / Catatan;
+end split
+
+:Input kesimpulan validasi;
+if (Perlu catatan perbaikan?) then (Ya)
+  :Input catatan perbaikan;
+endif
+if (Ada referensi tambahan?) then (Ya)
+  :Input referensi tambahan;
+endif
+
+:Submit validasi;
+
+:Simpan snapshot data akad;
+:Hitung hash snapshot;
+:Simpan ValidasiAkadDps dengan versi baru;
+:Update pembiayaan.status_validasi_dps;
+
+if (Hasil?) then (Sesuai Syariah)
+  :Notify Pengurus: "Akad sesuai, bisa diapprove";
+  :Notify Anggota: "Akad dinyatakan sesuai syariah";
+elseif (Perlu Perbaikan) then
+  :Notify Anggota: "Perlu perbaikan data akad";
+  :Notify Pengurus: "Menunggu perbaikan anggota";
+else (Tidak Sesuai)
+  :Notify Anggota: "Akad tidak sesuai syariah";
+  :Notify Pengurus: "Akad ditolak DPS";
+endif
+
+:Lihat riwayat validasi (opsional);
+:Bandingkan snapshot jika ada perubahan (opsional);
+
+stop
+@enduml
+
+
+' ===== 8. TOKO & PRODUK MODERASI =====
+@startuml activity-toko-produk
+title Activity Diagram - Toko & Produk Moderasi
+
+|#LightGreen|Anggota|
+start
+:Klik "Buka Lapak";
+:Input data toko;
+  - Nama toko
+  - Kategori
+  - Deskripsi
+  - Logo
+:Submit pendaftaran toko;
+:Toko status: menunggu_verifikasi;
+
+|#LightYellow|Pengurus|
+:Notifikasi: toko baru perlu verifikasi;
+:Review data toko;
+:Cek kelengkapan data;
+
+if (Toko layak?) then (Ya)
+  :Approve toko;
+  :Update status toko: aktif;
+  :Notify Anggota: toko aktif;
+else (Tidak)
+  :Reject toko;
+  :Update status toko: nonaktif;
+  :Notify Anggota: toko ditolak;
+endif
+
+|#LightGreen|Anggota|
+:Login ke Lapak Saya;
+:Kelola produk;
+:Tambah produk baru;
+  - Nama produk
+  - Harga
+  - Deskripsi
+  - Stok
+  - Kategori
+  - Gambar
+:Submit produk;
+:Produk status: menunggu_verifikasi;
+
+|#LightYellow|Pengurus|
+:Review produk dari sisi operasional;
+if (Produk disetujui pengurus?) then (Ya)
+  :Approve produk (operasional);
+else (Tidak)
+  :Reject produk;
+  :Notify Anggota;
+endif
+
+|#LightCoral|DPS|
+:Review produk dari sisi syariah;
+if (Produk sesuai syariah?) then (Ya)
+  :Approve produk (syariah);
+  :Update produk status: aktif;
+  :Produk tampil di marketplace;
+else (Tidak)
+  :Reject produk;
+  :Notify Anggota & Pengurus;
+endif
+
+|#LightGreen|Anggota|
+:Lihat produk tampil di marketplace;
+:Kelola stok & harga;
+if (Ada pesanan baru?) then (Ya)
+  :Lihat pesanan di Lapak;
+  :Proses pesanan;
+  :Update status: dikirim;
+endif
+
+stop
+@enduml
+
+
+' ===== 9. MUTASI KAS (VERIFIKASI TERPUSAT) =====
+@startuml activity-mutasi-kas
+title Activity Diagram - Mutasi Kas (Verifikasi Terpusat)
+
+|#LightGreen|Anggota|
+start
+:Submit transaksi apapun\n(simpanan/angsuran/pencairan);
+:Buat TransaksiPembayaran\n(status: menunggu_verifikasi);
+:Catat di MutasiKas;
+
+|#LightYellow|Pengurus|
+:Masuk menu Mutasi Kas;
+:Lihat daftar transaksi menunggu;
+
+split
+  :Cek bukti transfer anggota;
+split again
+  :Cek rekening sumber/tujuan;
+split again
+  :Cek nominal & tanggal;
+end split
+
+if (Semua valid?) then (Ya)
+  :Approve mutasi;
+  :Update TransaksiPembayaran: diverifikasi;
+  
+  if (Jenis transaksi?) then (Setoran Simpanan)
+    :Update SetoranSimpanan: diterima;
+    :Tambah saldo simpanan anggota;
+  elseif (Pembayaran Angsuran) then
+    :Update PembayaranAngsuran: diverifikasi;
+    :Update Angsuran: dibayar;
+    :Set tanggal_bayar;
+    :Cek apakah semua angsuran lunas;
+  elseif (Pencairan Dana) then
+    :Update PencairanDana: selesai;
+    :Cek apakah plafon cair penuh;
+  endif
+  
+  :Notify Anggota: transaksi diterima;
+  
+else (Tidak)
+  :Tolak mutasi;
+  :Input alasan penolakan;
+  :Update status: ditolak;
+  :Notify Anggota: transaksi ditolak;
+endif
+
+:Export mutasi (opsional);
+
+stop
+@enduml
+
+
+' ===== 10. QRIS PAYMENT FLOW =====
+@startuml activity-qris
+title Activity Diagram - Pembayaran QRIS
+
+|#LightGreen|Anggota|
+start
+:Pilih item yang ingin dibayar;
+  - Angsuran tertentu
+  - Setoran simpanan
+  - Pesanan marketplace
+
+:Request QRIS payment;
+
+|#LightGray|Payment Gateway|
+:Generate unique payment_code;
+:Generate QR code image;
+:Set expiry time;
+:Create Payment record (status: pending);
+
+|#LightGreen|Anggota|
+:Tampilkan QR code;
+:User scan QR dengan mobile banking;
+:User konfirmasi pembayaran;
+
+|#LightGray|Payment Gateway|
+if (Pembayaran berhasil?) then (Ya)
+  :Kirim webhook callback;
+  :Status: capture/settlement;
+elseif (Expired) then
+  :Kirim webhook callback;
+  :Status: expire;
+elseif (Dibatalkan) then
+  :Kirim webhook callback;
+  :Status: cancel/deny;
+endif
+
+|#LightYellow|Pengurus|
+:PaymentWebhookController menerima callback;
+:Verifikasi payment_code;
+if (Status pembayaran?) then (PAID)
+  :Update Payment: PAID;
+  :Update paid_at timestamp;
+  
+  if (Tipe pembayaran?) then (Angsuran)
+    :Update PembayaranAngsuran;
+    :Update Angsuran: dibayar;
+  elseif (Simpanan) then
+    :Update SetoranSimpanan;
+    :Tambah saldo simpanan;
+  elseif (Marketplace) then
+    :Update Pesanan: status_pembayaran lunas;
+  endif
+  
+  :Log webhook success;
+
+else (FAILED/EXPIRED/CANCELLED)
+  :Update Payment status;
+  :Log webhook status;
+endif
+
+|#LightGreen|Anggota|
+if (Ingin cek status?) then (Ya)
+  :AJAX check /payments/{code}/status;
+  if (Gateway bilang PAID tapi record masih pending?) then (Ya)
+    :Process via status check fallback;
+  endif
+endif
+
+:Riwayat pembayaran terupdate;
+
+stop
+@enduml
+
+
+' ===== 11. ADMIN USER MANAGEMENT =====
+@startuml activity-admin-users
+title Activity Diagram - Admin User Management
+
+|#Lavender|Admin|
+start
+:Login ke Dashboard Admin;
+:Lihat statistik users;
+  - Total per role
+  - Aktif / Nonaktif
+  - Baru bulan ini
+
+if (Aksi?) then (Daftar Users)
+  :Buka User Management;
+  :Filter by role;
+  :Filter by status;
+  :Cari by nama/email;
+  :Lihat daftar users (paginated);
+  
+  if (Detail user?) then (Ya)
+    :Klik detail;
+    :Lihat profil & aktivitas;
+      - Simpanan
+      - Pembiayaan
+      - Pesanan
+      - Toko & Produk
+    :Kembali ke daftar;
+  endif
+  
+  if (Hapus user?) then (Ya)
+    if (User = admin sendiri?) then (Ya)
+      :Error: "Tidak bisa hapus akun sendiri";
+    else (Tidak)
+      :Konfirmasi hapus;
+      :Hapus user + session + notifikasi;
+      :Redirect ke daftar;
+    endif
+  endif
+
+elseif (Export Data) then
+  :Generate CSV;
+  :Download file CSV;
+
+elseif (Notifikasi) then
+  :Lihat notifikasi;
+  :Lihat inbox entries;
+  :Lihat system stats;
+    - Pending DPS validation
+    - Pending toko verification
+    - Pending produk verification
+  :Tandai notifikasi dibaca;
+  :Atau tandai semua dibaca;
+
+endif
+
+stop
+@enduml
+
+
+' ===== 12. PENGELOLAAN ANGGOTA OLEH PENGURUS =====
+@startuml activity-anggota-crud
+title Activity Diagram - Pengelolaan Anggota (CRUD)
+
+|#LightYellow|Pengurus|
+start
+:Login ke Dashboard Pengurus;
+:Masuk menu Anggota;
+
+if (Aksi?) then (Tambah Anggota)
+  :Input data anggota baru;
+    - Nama, email, no_hp
+    - Pekerjaan, penghasilan
+    - Tanggal gabung
+    - Simpanan pokok
+    - Status keanggotaan
+    - Password
+  :Submit;
+  if (Validasi berhasil?) then (Ya)
+    :Buat User (role: anggota);
+    :Buat Simpanan Pokok;
+    :Notify Anggota: akun dibuat;
+  else (Tidak)
+    :Tampilkan error;
+  endif
+
+elseif (Edit Anggota) then
+  :Klik edit anggota;
+  :Fetch data dari endpoint show;
+  :Tampilkan form edit;
+  :Update data;
+  :Submit;
+  :Update User + Simpanan Pokok;
+
+elseif (Hapus Anggota) then
+  :Klik hapus;
+  :Konfirmasi hapus;
+  :Hapus User + cascade data;
+  :Notify Anggota: akun dihapus;
+
+elseif (Cari/Filter) then
+  :Input kata kunci pencarian;
+  :Filter by status keanggotaan;
+  :Lihat hasil pencarian;
+
+endif
+
+:Dashboard menampilkan daftar anggota;
+:Statistik: total simpanan pokok;
+
+stop
+@enduml
+
+
+' ===== 13. LAPORAN PENGAWASAN DPS =====
+@startuml activity-dps-laporan
+title Activity Diagram - Laporan Pengawasan DPS
+
+|#LightCoral|DPS|
+start
+:Login ke Dashboard DPS;
+:Masuk menu Laporan Pengawasan;
+
+if (Aksi?) then (Buat Laporan Baru)
+  :Pilih periode laporan;
+  :Input judul laporan;
+  :Input ringkasan temuan;
+  :Input rekomendasi;
+  :Submit laporan;
+  :Laporan status: draft;
+
+elseif (Update Laporan) then
+  :Pilih laporan yang ada;
+  :Edit konten laporan;
+  :Submit perubahan;
+
+elseif (Lihat Laporan) then
+  :Pilih laporan;
+  :Lihat detail;
+  :Lihat riwayat perubahan;
+
+endif
+
+:Gunakan data dari;
+  - Temuan Audit
+  - Opini Syariah
+  - Pengawasan Transaksi
+  - Validasi Akad
+
+stop
+@enduml
+
+
+' ===== 14. NOTIFIKASI SYSTEM =====
+@startuml activity-notifikasi
+title Activity Diagram - Alur Notifikasi Sistem
+
+start
+
+:Event trigger notifikasi;
+
+if (Tipe event?) then (Pembiayaan Diajukan)
+  :Notify DPS: "Pengajuan baru perlu audit";
+  :Notify Pengurus: "Pengajuan baru perlu review";
+  :Notify Admin: "Pengajuan baru";
+
+elseif (Pembiayaan Disetujui) then
+  :Notify Anggota: "Pembiayaan disetujui";
+  :Notify DPS: "Pembiayaan disetujui";
+
+elseif (Pencairan Diajukan) then
+  :Notify Pengurus: "Permintaan pencairan baru";
+
+elseif (Toko Diverifikasi) then
+  :Notify Anggota: "Toko aktif/ditolak";
+
+elseif (Akad Divalidasi DPS) then
+  :Notify Pengurus: "Hasil validasi DPS";
+  :Notify Anggota: "Hasil validasi akad";
+
+elseif (Angsuran Dibayar) then
+  :Notify Pengurus: "Pembayaran menunggu verifikasi";
+
+elseif (Simpanan Disetor) then
+  :Notify Pengurus: "Setoran menunggu verifikasi";
+
+elseif (Pesanan Baru) then
+  :Notify Penjual (toko owner): "Pesanan baru";
+  :Notify Pengurus: "Pesanan baru di marketplace";
+
+endif
+
+:Simpan ke database notifications;
+:Kirim ke inbox entries;
+
+|#Lavender|Admin|
+:Notifikasi masuk ke Admin;
+
+|#LightYellow|Pengurus|
+:Notifikasi masuk ke Pengurus;
+
+|#LightCoral|DPS|
+:Notifikasi masuk ke DPS;
+
+|#LightGreen|Anggota|
+:Notifikasi masuk ke Anggota;
+
+:User buka halaman notifikasi;
+:Klik notifikasi;
+:Update status: dibaca;
+
+stop
+@enduml
+
+
+' ===== STATE DIAGAM: STATUS PEMBIAYAAN =====
+@startuml state-pembiayaan
+title State Diagram - Status Pembiayaan
+
+[*] --> diajukan: Anggota submit pengajuan
+
+diajukan --> disetujui: Pengurus approve\n(DPS sudah validasi sesuai)
+diajukan --> ditolak: Pengurus tolak
+diajukan --> menunggu_perbaikan: DPS: perlu_perbaikan
+
+menunggu_perbaikan --> diajukan: Anggota submit ulang
+
+disetujui --> berjalan: Pencairan selesai\n(plafon cair penuh)
+
+berjalan --> lunas: Semua angsuran dibayar
+
+ditolak --> [*]
+lunas --> [*]
+berjalan --> [*] : (terminal state)
+@enduml
+
+
+' ===== STATE DIAGRAM: STATUS PENCAIRAN =====
+@startuml state-pencairan
+title State Diagram - Status Pencairan Dana
+
+[*] --> menunggu: Anggota submit pencairan
+
+menunggu --> diproses: Pengurus approve
+menunggu --> ditolak: Pengurus tolak
+
+diproses --> selesai: Mutasi diverifikasi\n/ callback sukses
+diproses --> ditolak: Mutasi ditolak\n/ callback gagal
+
+selesai --> [*]
+ditolak --> [*]
+@enduml
+
+
+' ===== STATE DIAGRAM: STATUS TRANSAKSI KAS =====
+@startuml state-transaksi-kas
+title State Diagram - Status Transaksi Kas (Mutasi)
+
+[*] --> menunggu_verifikasi: Anggota submit transaksi
+
+menunggu_verifikasi --> diverifikasi: Pengurus approve
+menunggu_verifikasi --> ditolak: Pengurus tolak
+
+diverifikasi --> [*]: Transaksi selesai
+ditolak --> [*]: Transaksi ditolak
+@enduml
+
+
+' ===== SEQUENCE: ALUR LENGKAP PEMBIAYAAN =====
+@startuml seq-pembiayaan-lengkap
+title Sequence Diagram - Alur Lengkap Pembiayaan
+
+actor Anggota as A
+participant "Pembiayaan\nController" as PC
+database DB as DB
+participant "Notification\nService" as NS
+actor DPS
+participant "Audit\nController" as AC
+actor Pengurus
+participant "Pengurus\nPembiayaan" as PGC
+participant "Payment\nGateway" as GW
+
+== Pengajuan ==
+A -> PC: POST /anggota/pembiayaan\n(form + dokumen)
+PC -> PC: Normalisasi & validasi input
+PC -> DB: INSERT pembiayaan\n(status: diajukan)
+PC -> DB: INSERT detail_akad
+PC -> DB: INSERT dokumen
+PC -> DB: INSERT jadwal angsuran\n(jika Murabahah/Qardh)
+PC -> NS: pembiayaanDiajukan()
+NS --> DPS: Notifikasi audit akad
+NS --> Pengurus: Notifikasi review
+PC --> A: Redirect sukses
+
+== Validasi DPS ==
+DPS -> AC: GET /dps/audit/{id}
+AC -> DB: SELECT pembiayaan + detail
+AC --> DPS: Detail akad + checklist
+DPS -> AC: POST /dps/audit\n(hasil + checklist + kesimpulan)
+AC -> AC: Buat snapshot + hash
+AC -> DB: INSERT validasi_akad_dps
+AC -> DB: UPDATE pembiayaan\n(status_validasi_dps)
+AC -> NS: akadDivalidasiDps()
+NS --> Pengurus: Hasil validasi
+NS --> A: Hasil validasi
+
+== Review Pengurus ==
+Pengurus -> PGC: POST /pengurus/pembiayaan/{id}/approve
+PGC -> DB: SELECT pembiayaan\n(lockForUpdate)
+PGC -> PGC: Cek status_validasi_dps = sesuai
+PGC -> PGC: Cek hash masih cocok
+PGC -> DB: UPDATE pembiayaan\n(status: disetujui)
+PGC -> DB: INSERT jadwal angsuran
+PGC -> NS: pembiayaanDisetujui()
+NS --> A: Pembiayaan disetujui
+
+== Pencairan ==
+A -> DB: POST pencairan\n(pembiayaan_id, rekening tujuan)
+DB -> DB: INSERT pencairan_dana\n(status: menunggu)
+DB -> NS: pencairanDiajukan()
+NS --> Pengurus: Permintaan pencairan
+
+Pengurus -> DB: POST pencairan/{id}/approve
+DB -> DB: UPDATE pencairan\n(status: diproses)
+
+alt Transfer Manual
+  Pengurus -> DB: POST transfer\n(bukti + referensi)
+  DB -> DB: INSERT mutasi_kas
+  Pengurus -> DB: POST mutasi/{id}/approve
+  DB -> DB: UPDATE pencairan\n(status: selesai)
+else API Disbursement
+  Pengurus -> GW: Create disbursement
+  GW --> Pengurus: Reference
+  GW -> DB: Webhook callback
+  DB -> DB: UPDATE pencairan\n(status: selesai)
+end
+
+== Pembayaran Angsuran ==
+A -> DB: POST angsuran\n(bukti transfer)
+DB -> DB: INSERT pembayaran_angsuran\n(status: menunggu_verifikasi)
+DB -> DB: INSERT transaksi_pembayaran
+DB -> NS: angsuranDibayar()
+NS --> Pengurus: Pembayaran menunggu
+
+Pengurus -> DB: POST mutasi/{id}/approve
+DB -> DB: UPDATE pembayaran_angsuran
+DB -> DB: UPDATE angsuran\n(status: dibayar)
+DB -> NS: Notify angsuran terverifikasi
+NS --> A: Pembayaran diterima
+@enduml

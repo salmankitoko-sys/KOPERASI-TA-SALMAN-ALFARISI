@@ -1,0 +1,4 @@
+<section x-show='activeTab === &quot;laporan&quot;' x-cloak>
+    <div class='mb-6 rounded-xl border border-indigo-200 bg-indigo-50 p-5'><h3 class='font-bold text-indigo-950'>Laporan Pertanggungjawaban kepada Ketua</h3><p class='mt-1 text-sm text-indigo-700'>Susun capaian, kendala, dan tindak lanjut sebelum diserahkan.</p><a href='{{ route('pengurus.laporan.index') }}' class='mt-4 inline-block rounded-lg bg-indigo-700 px-4 py-2 text-sm font-semibold text-white'>Kelola & Kirim Laporan</a></div>
+    <a href='{{ route('pengurus.laporan-otomatis.index') }}' class='block rounded-xl border bg-white p-5 shadow-sm hover:bg-indigo-50'><h3 class='font-bold'>Laporan Operasional Koperasi</h3><p class='mt-1 text-sm text-gray-500'>Anggota, simpanan, dan pembiayaan dalam satu halaman.</p><p class='mt-4 text-sm font-semibold text-indigo-700'>Buka laporan gabungan</p></a>
+</section>
