@@ -23,7 +23,7 @@ class UserSeeder extends Seeder
             ],
             [
                 'name' => 'Admin Utama',
-                'email' => 'admin@koperasi.com',
+                'email' => 'admin@koperasi.test',
                 'role' => User::ROLE_ADMIN,
                 'is_active' => true,
             ],
