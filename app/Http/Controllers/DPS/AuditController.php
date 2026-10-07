@@ -56,7 +56,7 @@ class AuditController extends Controller
         Gate::authorize('dps.view-akad');
 
         $pembiayaan = Pembiayaan::with([
-            'user:id,name,email', 'detail', 'dokumen', 'angsuran',
+            'user:id,name,email,no_hp,pekerjaan,penghasilan', 'detail', 'dokumen', 'angsuran',
             'validatorDps:id,name', 'riwayatValidasiDps.validator:id,name',
         ])->findOrFail($id);
 
@@ -66,11 +66,7 @@ class AuditController extends Controller
         return response()->json([
             'success' => true,
             'pembiayaan' => $pembiayaan,
-            'riwayatAkad' => [
-                'detail' => $pembiayaan->detail,
-                'dokumen' => $pembiayaan->dokumen,
-                'angsuran' => $pembiayaan->angsuran,
-            ],
+            'riwayatAkad' => $this->riwayatAkad($pembiayaan),
             'reviewAkad' => $this->reviewAkad($pembiayaan),
             'ringkasanReview' => $this->ringkasanReview($pembiayaan),
             'checklist' => AkadSyariahChecklist::definitions($pembiayaan->akad),
@@ -279,5 +275,61 @@ class AuditController extends Controller
             ['label' => 'Jadwal Angsuran', 'value' => $pembiayaan->angsuran->count(), 'type' => 'number'],
             ['label' => 'Validasi DPS', 'value' => $pembiayaan->status_validasi_dps, 'type' => 'validasi'],
         ];
+    }
+
+    private function riwayatAkad(Pembiayaan $pembiayaan): array
+    {
+        if (! $pembiayaan->detail) {
+            return [];
+        }
+
+        $fields = match ($pembiayaan->akad) {
+            'murabahah' => [
+                'Harga Beli' => 'harga_beli',
+                'Harga Jual' => 'harga_jual',
+                'Margin (%)' => 'margin_persen',
+                'Margin' => 'margin',
+                'Uang Muka' => 'dp',
+                'Biaya Administrasi' => 'biaya_admin',
+                'Angsuran per Bulan' => 'angsuran_bulanan',
+                'Total Pembayaran' => 'total_pembayaran',
+            ],
+            'mudharabah' => [
+                'Modal Koperasi' => 'modal',
+                'Nisbah Koperasi (%)' => 'nisbah_koperasi',
+                'Nisbah Anggota (%)' => 'nisbah_anggota',
+                'Estimasi Omzet' => 'estimasi_omzet',
+                'Estimasi Biaya' => 'estimasi_biaya',
+                'Estimasi Laba' => 'estimasi_laba',
+                'Bagi Hasil Koperasi' => 'bagi_hasil_koperasi',
+                'Bagi Hasil Anggota' => 'bagi_hasil_anggota',
+            ],
+            'musyarakah' => [
+                'Modal Koperasi' => 'modal',
+                'Modal Anggota' => 'modal_anggota',
+                'Porsi Modal Koperasi (%)' => 'porsi_modal_koperasi',
+                'Porsi Modal Anggota (%)' => 'porsi_modal_anggota',
+                'Nisbah Koperasi (%)' => 'nisbah_koperasi',
+                'Nisbah Anggota (%)' => 'nisbah_anggota',
+                'Estimasi Omzet' => 'estimasi_omzet',
+                'Estimasi Biaya' => 'estimasi_biaya',
+                'Estimasi Laba' => 'estimasi_laba',
+                'Bagi Hasil Koperasi' => 'bagi_hasil_koperasi',
+                'Bagi Hasil Anggota' => 'bagi_hasil_anggota',
+            ],
+            'ijarah' => [
+                'Nilai Aset' => 'nilai_aset',
+                'Ujrah per Bulan' => 'ujrah_bulanan',
+                'Biaya Perawatan' => 'biaya_perawatan',
+                'Opsi Pembelian' => 'opsi_beli',
+                'Total Pembayaran' => 'total_pembayaran',
+            ],
+            default => [],
+        };
+
+        return collect($fields)
+            ->mapWithKeys(fn (string $field, string $label) => [$label => $pembiayaan->detail->{$field}])
+            ->reject(fn ($value) => $value === null || $value === '')
+            ->all();
     }
 }

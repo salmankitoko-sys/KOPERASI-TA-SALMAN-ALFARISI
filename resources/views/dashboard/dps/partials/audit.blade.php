@@ -240,9 +240,9 @@
                             </div>
                         </div>
 
-                        {{-- Riwayat margin/nisbah --}}
+                        {{-- Rincian margin/nisbah akad --}}
                         <div>
-                            <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Riwayat Margin / Nisbah</p>
+                            <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Rincian Margin / Nisbah Akad</p>
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <template x-for="(value, key) in detail.riwayatAkad" :key="key">
                                     <div class="rounded-lg bg-gray-50 p-3 flex items-center justify-between">
@@ -250,6 +250,10 @@
                                         <p class="text-sm font-semibold text-gray-900" x-text="formatAkadValue(key, value)"></p>
                                     </div>
                                 </template>
+                                <p x-show="!Object.keys(detail.riwayatAkad || {}).length"
+                                   class="sm:col-span-2 rounded-lg bg-gray-50 p-3 text-sm text-gray-500">
+                                    Belum ada rincian margin atau nisbah untuk akad ini.
+                                </p>
                             </div>
                         </div>
 

@@ -68,6 +68,32 @@ class DpsAkadValidationTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_dps_akad_detail_returns_margin_and_nisbah_fields_as_display_values(): void
+    {
+        $dps = User::factory()->dps()->create();
+        $anggota = User::factory()->create([
+            'role' => User::ROLE_ANGGOTA,
+            'no_hp' => '081234567890',
+            'pekerjaan' => 'Pedagang',
+            'penghasilan' => 2500000,
+        ]);
+        $pembiayaan = $this->createPembiayaan($anggota);
+
+        $this->actingAs($dps)
+            ->getJson(route('dps.audit.show', $pembiayaan))
+            ->assertOk()
+            ->assertJsonPath('pembiayaan.user.no_hp', '081234567890')
+            ->assertJsonPath('pembiayaan.user.pekerjaan', 'Pedagang')
+            ->assertJsonPath('pembiayaan.user.penghasilan', '2500000.00')
+            ->assertJsonPath('riwayatAkad.Harga Beli', 1200000)
+            ->assertJsonPath('riwayatAkad.Harga Jual', 1320000)
+            ->assertJsonPath('riwayatAkad.Margin (%)', 10)
+            ->assertJsonPath('riwayatAkad.Margin', 120000)
+            ->assertJsonMissingPath('riwayatAkad.detail')
+            ->assertJsonMissingPath('riwayatAkad.dokumen')
+            ->assertJsonMissingPath('riwayatAkad.angsuran');
+    }
+
     public function test_dps_must_add_correction_instructions_for_an_akad_that_needs_correction(): void
     {
         $dps = User::factory()->dps()->create();
